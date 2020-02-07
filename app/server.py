@@ -4,7 +4,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 import uvicorn, aiohttp, asyncio
 from io import BytesIO
-
+from PIL import Image as PIL_Image
 """
 from fastai import *
 from fastai.vision import *
@@ -17,7 +17,13 @@ model_file_name = 'model'
 path = Path(__file__).parent
 
 app = Starlette()
-app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_headers=['X-Requested-With', 'Content-Type'])
+app.add_middleware(CORSMiddleware,
+        allow_origins=["*"],
+        allow_headers=["*"], # ['X-Requested-With', 'Content-Type']
+        allow_methods=["*"],
+        expose_headers=["X-Status"],
+        allow_credentials=True,
+        )
 app.mount('/static', StaticFiles(directory='app/static'))
 
 async def download_file(url, dest):
@@ -38,7 +44,7 @@ async def setup_learner():
     data = Im2MOS(TestImages(path=path))
     data.device = torch.device('cpu') # run on CPU
     model = RoIPoolModel()
-    learn = RoIPoolLearner(data, model, path=path) 
+    learn = RoIPoolLearner(data, model, path=path)
     learn.load(model_file_name)
     return learn
 
@@ -61,8 +67,36 @@ async def analyze(request):
     qmap = learn.predict_quality_map(img, [32, 32])
     score = f'{qmap.global_score:.2f}'
     mat = qmap.mat.astype(int).tolist()
-    return JSONResponse({'result': score})
+    data = {'local': mat,
+            'result': score,
+            'message': 'Created', 'code': 'SUCCESS',
+            'success': True, 'status': 'OK',
+            'ContentType':'application/json'
+           }
+    return JSONResponse(data)
+
+@app.route('/filepond', methods=['POST'])
+async def analyze(request):
+    # note that filepond post is different
+    data = await request.form()
+    # print(data) # FormData([('filepond', '{}'), ('filepond', <starlette.datastructures.UploadFile object at 0x7f22b454fdd8>)])
+    print(data['filepond'].file)
+    img_bytes = (data['filepond'].file.read()) # TypeError: object bytes can't be used in 'await' expression 
+    img = open_image(BytesIO(img_bytes))
+    # img = PIL_Image.open(file.stream)
+    # t = pil2tensor(img.convert("RGB"), np.float32).div_(255)
+    # img = Image(t)
+
+    qmap = learn.predict_quality_map(img, [32, 32])
+    score = f'{qmap.global_score:.2f}'
+    mat = qmap.mat.astype(int).tolist()
+    data = {'local': mat,
+            'result': score,
+            'message': 'Created', 'code': 'SUCCESS',
+            'success': True, 'status': 'OK',
+            'ContentType':'application/json'
+           }
+    return JSONResponse(data, status_code=200, headers={'Access-Control-Allow-Origin': '*'})
 
 if __name__ == '__main__':
     if 'serve' in sys.argv: uvicorn.run(app, host='0.0.0.0', port=8080)
-
