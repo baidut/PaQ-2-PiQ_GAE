@@ -9,7 +9,7 @@ from PIL import Image as PIL_Image
 from fastai import *
 from fastai.vision import *
 """
-from fastiqa.all import *
+from lib.fastiqa.all import *
 
 model_file_url = 'https://github.com/baidut/PaQ-2-PiQ/releases/download/v1.0/RoIPoolModel-fit.10.bs.120.pth'
 model_file_name = 'model'
@@ -81,7 +81,7 @@ async def analyze(request):
     data = await request.form()
     # print(data) # FormData([('filepond', '{}'), ('filepond', <starlette.datastructures.UploadFile object at 0x7f22b454fdd8>)])
     print(data['filepond'].file)
-    img_bytes = (data['filepond'].file.read()) # TypeError: object bytes can't be used in 'await' expression 
+    img_bytes = (data['filepond'].file.read()) # TypeError: object bytes can't be used in 'await' expression
     img = open_image(BytesIO(img_bytes))
     # img = PIL_Image.open(file.stream)
     # t = pil2tensor(img.convert("RGB"), np.float32).div_(255)
