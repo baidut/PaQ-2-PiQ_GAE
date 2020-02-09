@@ -75,6 +75,8 @@ async def analyze(request):
            }
     return JSONResponse(data)
 
+
+
 @app.route('/filepond', methods=['POST'])
 async def analyze(request):
     # note that filepond post is different
@@ -88,8 +90,10 @@ async def analyze(request):
     # img = Image(t)
 
     qmap = learn.predict_quality_map(img, [32, 32])
+
     score = f'{qmap.global_score:.2f}'
     mat = qmap.mat.astype(int).tolist()
+
     data = {'local': mat,
             'result': score,
             'message': 'Created', 'code': 'SUCCESS',
@@ -97,6 +101,37 @@ async def analyze(request):
             'ContentType':'application/json'
            }
     return JSONResponse(data, status_code=200, headers={'Access-Control-Allow-Origin': '*'})
+
+
+@app.route('/filepond2', methods=['POST'])
+async def analyze2(request):
+    square = True
+    # note that filepond post is different
+    data = await request.form()
+    # print(data) # FormData([('filepond', '{}'), ('filepond', <starlette.datastructures.UploadFile object at 0x7f22b454fdd8>)])
+    print(data['filepond'].file)
+    img_bytes = (data['filepond'].file.read()) # TypeError: object bytes can't be used in 'await' expression
+    img = open_image(BytesIO(img_bytes))
+    # img = PIL_Image.open(file.stream)
+    # t = pil2tensor(img.convert("RGB"), np.float32).div_(255)
+    # img = Image(t)
+
+    qmap = learn.predict_quality_map(img, [32, 32])
+    if square:
+        qmap.global_score = (qmap.global_score/82.0)**4*100
+        qmap.mat = np.power(np.array(qmap.mat)/75.0, 4)*100
+
+    score = f'{qmap.global_score:.2f}'
+    mat = qmap.mat.astype(int).tolist()
+
+    data = {'local': mat,
+            'result': score,
+            'message': 'Created', 'code': 'SUCCESS',
+            'success': True, 'status': 'OK',
+            'ContentType':'application/json'
+           }
+    return JSONResponse(data, status_code=200, headers={'Access-Control-Allow-Origin': '*'})
+
 
 if __name__ == '__main__':
     if 'serve' in sys.argv: uvicorn.run(app, host='0.0.0.0', port=8080)
