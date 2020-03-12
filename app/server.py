@@ -4,15 +4,16 @@ from starlette.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 import uvicorn, aiohttp, asyncio
 from io import BytesIO
-from PIL import Image as PIL_Image
 """
 from fastai import *
 from fastai.vision import *
-"""
 from lib.fastiqa.all import *
+"""
+from paq2piq_standalone import *
+import sys
 
 model_file_url = 'https://github.com/baidut/PaQ-2-PiQ/releases/download/v1.0/RoIPoolModel-fit.10.bs.120.pth'
-model_file_name = 'model'
+model_file_name = 'RoIPoolModel'
 # classes = ['black', 'grizzly', 'teddys']
 path = Path(__file__).parent
 
@@ -34,23 +35,14 @@ async def download_file(url, dest):
             with open(dest, 'wb') as f: f.write(data)
 
 async def setup_learner():
-    await download_file(model_file_url, path/'models'/f'{model_file_name}.pth')
-    """
-    data_bunch = ImageDataBunch.single_from_classes(path, classes,
-        ds_tfms=get_transforms(), size=224).normalize(imagenet_stats)
-    learn = cnn_learner(data_bunch, models.resnet34, pretrained=False)
-    learn.load(model_file_name)
-    """
-    data = Im2MOS(TestImages(path=path))
-    data.device = torch.device('cpu') # run on CPU
-    model = RoIPoolModel()
-    learn = RoIPoolLearner(data, model, path=path)
-    learn.load(model_file_name)
-    return learn
+    file_path = path/'models'/f'{model_file_name}.pth'
+    await download_file(model_file_url, file_path)
+    # run on cpu
+    return InferenceModel(RoIPoolModel(), file_path)
 
 loop = asyncio.get_event_loop()
 tasks = [asyncio.ensure_future(setup_learner())]
-learn = loop.run_until_complete(asyncio.gather(*tasks))[0]
+model = loop.run_until_complete(asyncio.gather(*tasks))[0]
 loop.close()
 
 @app.route('/')
@@ -58,22 +50,23 @@ def index(request):
     html = path/'view'/'index.html'
     return HTMLResponse(html.open().read())
 
+
+def get_results(img_bytes):
+    image = Image.open(BytesIO(img_bytes))
+    output = model.predict_from_pil_image(image)
+    # save traffic? (not so important)
+    # Object of type 'float32' is not JSON serializable
+    for key, val in output.items():
+        if not isinstance(val, str):
+            output[key] = np.array(val).astype(int).tolist()
+    return JSONResponse(output)
+
+
 @app.route('/analyze', methods=['POST'])
 async def analyze(request):
     data = await request.form()
     img_bytes = await (data['file'].read())
-    img = open_image(BytesIO(img_bytes))
-
-    qmap = learn.predict_quality_map(img, [32, 32])
-    score = f'{qmap.global_score:.2f}'
-    mat = qmap.mat.astype(int).tolist()
-    data = {'local': mat,
-            'result': score,
-            'message': 'Created', 'code': 'SUCCESS',
-            'success': True, 'status': 'OK',
-            'ContentType':'application/json'
-           }
-    return JSONResponse(data)
+    return get_results(img_bytes)
 
 
 
@@ -83,54 +76,8 @@ async def analyze(request):
     data = await request.form()
     # print(data) # FormData([('filepond', '{}'), ('filepond', <starlette.datastructures.UploadFile object at 0x7f22b454fdd8>)])
     print(data['filepond'].file)
-    img_bytes = (data['filepond'].file.read()) # TypeError: object bytes can't be used in 'await' expression
-    img = open_image(BytesIO(img_bytes))
-    # img = PIL_Image.open(file.stream)
-    # t = pil2tensor(img.convert("RGB"), np.float32).div_(255)
-    # img = Image(t)
-
-    qmap = learn.predict_quality_map(img, [32, 32])
-
-    score = f'{qmap.global_score:.2f}'
-    mat = qmap.mat.astype(int).tolist()
-
-    data = {'local': mat,
-            'result': score,
-            'message': 'Created', 'code': 'SUCCESS',
-            'success': True, 'status': 'OK',
-            'ContentType':'application/json'
-           }
-    return JSONResponse(data, status_code=200, headers={'Access-Control-Allow-Origin': '*'})
-
-
-@app.route('/filepond2', methods=['POST'])
-async def analyze2(request):
-    square = True
-    # note that filepond post is different
-    data = await request.form()
-    # print(data) # FormData([('filepond', '{}'), ('filepond', <starlette.datastructures.UploadFile object at 0x7f22b454fdd8>)])
-    print(data['filepond'].file)
-    img_bytes = (data['filepond'].file.read()) # TypeError: object bytes can't be used in 'await' expression
-    img = open_image(BytesIO(img_bytes))
-    # img = PIL_Image.open(file.stream)
-    # t = pil2tensor(img.convert("RGB"), np.float32).div_(255)
-    # img = Image(t)
-
-    qmap = learn.predict_quality_map(img, [32, 32])
-    if square:
-        qmap.global_score = (qmap.global_score/82.0)**4*100
-        qmap.mat = np.power(np.array(qmap.mat)/75.0, 4)*100
-
-    score = f'{qmap.global_score:.2f}'
-    mat = qmap.mat.astype(int).tolist()
-
-    data = {'local': mat,
-            'result': score,
-            'message': 'Created', 'code': 'SUCCESS',
-            'success': True, 'status': 'OK',
-            'ContentType':'application/json'
-           }
-    return JSONResponse(data, status_code=200, headers={'Access-Control-Allow-Origin': '*'})
+    img_bytes = (data['filepond'].file.read())
+    return get_results(img_bytes)
 
 
 if __name__ == '__main__':
