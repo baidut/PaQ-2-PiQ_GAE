@@ -23,13 +23,12 @@ import sys
 # If `entrypoint` is not defined in app.yaml, App Engine will look for an app
 # called `app` in `main.py`.
 app = Flask(__name__)
+app.model = InferenceModel(RoIPoolModel(), Path(__file__).parent/'models'/'RoIPoolModel.pth')
 CORS(app)
-path = Path(__file__).parent
-model = InferenceModel(RoIPoolModel(), path/'models'/'RoIPoolModel.pth')
 
 def get_results(img_bytes):
     image = Image.open(img_bytes)
-    output = model.predict_from_pil_image(image)
+    output = app.model.predict_from_pil_image(image)
     # save traffic? (not so important)
     # Object of type 'float32' is not JSON serializable
     for key, val in output.items():
@@ -42,7 +41,7 @@ def hello():
     """Return a friendly HTTP greeting."""
     return 'Hello World!'
 
-@app.route('/index')
+@app.route('/view')
 def index():
     html = path/'view'/'index.html'
     return HTMLResponse(html.open().read())
