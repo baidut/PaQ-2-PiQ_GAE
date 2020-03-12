@@ -1,84 +1,64 @@
-from starlette.applications import Starlette
-from starlette.responses import HTMLResponse, JSONResponse
-from starlette.staticfiles import StaticFiles
-from starlette.middleware.cors import CORSMiddleware
-import uvicorn, aiohttp, asyncio
-from io import BytesIO
-"""
-from fastai import *
-from fastai.vision import *
-from lib.fastiqa.all import *
-"""
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# [START gae_python37_app]
+from flask import Flask, jsonify, request, make_response
+from flask_cors import CORS
+
 from paq2piq_standalone import *
 import sys
+# from io import BytesIO
 
-model_file_url = 'https://github.com/baidut/PaQ-2-PiQ/releases/download/v1.0/RoIPoolModel-fit.10.bs.120.pth'
-model_file_name = 'RoIPoolModel'
-# classes = ['black', 'grizzly', 'teddys']
+# If `entrypoint` is not defined in app.yaml, App Engine will look for an app
+# called `app` in `main.py`.
+app = Flask(__name__)
+CORS(app)
 path = Path(__file__).parent
-
-app = Starlette()
-app.add_middleware(CORSMiddleware,
-        allow_origins=["*"],
-        allow_headers=["*"], # ['X-Requested-With', 'Content-Type']
-        allow_methods=["*"],
-        expose_headers=["X-Status"],
-        allow_credentials=True,
-        )
-app.mount('/static', StaticFiles(directory='static'))
-
-# async def download_file(url, dest):
-#     if dest.exists(): return
-#     async with aiohttp.ClientSession() as session:
-#         async with session.get(url) as response:
-#             data = await response.read()
-#             with open(dest, 'wb') as f: f.write(data)
-
-async def setup_learner():
-    file_path = path/'models'/f'{model_file_name}.pth'
-    # await download_file(model_file_url, file_path)
-    # run on cpu
-    return InferenceModel(RoIPoolModel(), file_path)
-
-loop = asyncio.get_event_loop()
-tasks = [asyncio.ensure_future(setup_learner())]
-model = loop.run_until_complete(asyncio.gather(*tasks))[0]
-loop.close()
-
-@app.route('/')
-def index(request):
-    html = path/'view'/'index.html'
-    return HTMLResponse(html.open().read())
-
+model = InferenceModel(RoIPoolModel(), path/'models'/'RoIPoolModel.pth')
 
 def get_results(img_bytes):
-    image = Image.open(BytesIO(img_bytes))
+    image = Image.open(img_bytes)
     output = model.predict_from_pil_image(image)
     # save traffic? (not so important)
     # Object of type 'float32' is not JSON serializable
     for key, val in output.items():
         if not isinstance(val, str):
             output[key] = np.array(val).astype(int).tolist()
-    return JSONResponse(output)
+    return make_response(jsonify(output), 200)
 
+@app.route('/')
+def hello():
+    """Return a friendly HTTP greeting."""
+    return 'Hello World!'
 
-@app.route('/analyze', methods=['POST'])
-async def analyze(request):
-    data = await request.form()
-    img_bytes = await (data['file'].read())
-    return get_results(img_bytes)
-
-
+@app.route('/index')
+def index():
+    html = path/'view'/'index.html'
+    return HTMLResponse(html.open().read())
 
 @app.route('/filepond', methods=['POST'])
-async def analyze(request):
+def analyze():
     # note that filepond post is different
-    data = await request.form()
-    # print(data) # FormData([('filepond', '{}'), ('filepond', <starlette.datastructures.UploadFile object at 0x7f22b454fdd8>)])
-    print(data['filepond'].file)
-    img_bytes = (data['filepond'].file.read())
-    return get_results(img_bytes)
+    for key in request.files:
+        file = request.files[key]
+        #print(data['filepond'].file)
+        return get_results(file.stream)
 
 
 if __name__ == '__main__':
-    if 'serve' in sys.argv: uvicorn.run(app, host='0.0.0.0', port=8080)
+    # This is used when running locally only. When deploying to Google App
+    # Engine, a webserver process such as Gunicorn will serve the app. This
+    # can be configured by adding an `entrypoint` to app.yaml.
+    app.run(host='127.0.0.1', port=8080, debug=True)
+# [END gae_python37_app]
