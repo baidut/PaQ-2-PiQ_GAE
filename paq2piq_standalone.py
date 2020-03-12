@@ -41,10 +41,10 @@ def get_blockwise_rois(blk_size, img_size=None):
 class RoIPoolModel(nn.Module):
     rois = None
 
-    def __init__(self, backbone='resnet18'):
+    def __init__(self, backbone='resnet18', pretrained=False): # set to true if you need to train it
         super().__init__()
         if backbone is 'resnet18':
-            model = tv.models.resnet18(pretrained=True)
+            model = tv.models.resnet18(pretrained=pretrained) #
             cut = -2
             spatial_scale = 1/32
 
