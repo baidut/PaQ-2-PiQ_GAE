@@ -25,7 +25,7 @@ app.add_middleware(CORSMiddleware,
         expose_headers=["X-Status"],
         allow_credentials=True,
         )
-app.mount('/static', StaticFiles(directory='app/static'))
+app.mount('/static', StaticFiles(directory='static'))
 
 async def download_file(url, dest):
     if dest.exists(): return

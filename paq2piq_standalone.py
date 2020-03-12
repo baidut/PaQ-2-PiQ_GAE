@@ -12,6 +12,7 @@ from PIL import Image
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
+print(device)
 
 class AdaptiveConcatPool2d(nn.Module):
     def __init__(self, sz=None):
