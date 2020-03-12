@@ -27,16 +27,16 @@ app.add_middleware(CORSMiddleware,
         )
 app.mount('/static', StaticFiles(directory='static'))
 
-async def download_file(url, dest):
-    if dest.exists(): return
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            data = await response.read()
-            with open(dest, 'wb') as f: f.write(data)
+# async def download_file(url, dest):
+#     if dest.exists(): return
+#     async with aiohttp.ClientSession() as session:
+#         async with session.get(url) as response:
+#             data = await response.read()
+#             with open(dest, 'wb') as f: f.write(data)
 
 async def setup_learner():
     file_path = path/'models'/f'{model_file_name}.pth'
-    await download_file(model_file_url, file_path)
+    # await download_file(model_file_url, file_path)
     # run on cpu
     return InferenceModel(RoIPoolModel(), file_path)
 
