@@ -88,15 +88,26 @@ class RoIPoolModel(nn.Module):
         t = torch.tensor(a).float().to(device)
         self.rois = t.unsqueeze(0).repeat(batch_size, 1, 1).view(batch_size, -1).view(-1, 4)
 
+def img_files_in(path):
+    IMAGE_EXTS = '.jpg', '.jpeg', '.bmp', '.png'
+    a = [f for f in Path(path).rglob('*.*') if f.name.lower().endswith(IMAGE_EXTS)]
+    return np.array(a) # a[mask]
 
-def normalize(x):
+def get_peak(data):
+    from collections import Counter
+    L = int(data)
+    most_common, num_most_common = Counter(L).most_common(1)[0]
+    return most_common
+    
+def normalize(x, peak, std_left, std_right, N_std, new_peak=None):
+    if new_peak is None:
+        new_peak = peak
+        
     x = np.array(x)
-    x_mean, std_left, std_right = 72.59696108881171, 7.798274017370107, 4.118047289170692
-    N_std = 3.5 # https://en.wikipedia.org/wiki/68%E2%80%9395%E2%80%9399.7_rule
-    # 3.5 -- > 99.9%
-    # 3  -- > 99.7%
-    x [x < x_mean] = x_mean + x_mean*(x[x < x_mean]-x_mean)/(N_std*std_left)
-    x [x > x_mean] = x_mean + (100-x_mean)*(x[x > x_mean]-x_mean)/(N_std*std_right)
+    left, right = x < peak, x >= peak
+    
+    x [left] = new_peak + new_peak*(x[left]-peak)/(N_std*std_left)
+    x [right] = new_peak + (100-new_peak)*(x[right]-peak)/(N_std*std_right)
     # x [x < 0] = 0
     # x [x > 100] = 100
     return x.tolist()
@@ -121,6 +132,30 @@ class InferenceModel:
         image = image.convert("RGB")
         return self.predict(image)
 
+    
+    # normalization
+    N_std = 3.5
+    new_peak = None
+    norm_params = 72, 7.798274017370107, 4.118047289170692
+
+    def normalize(self, x):
+        x = normalize(x, *self.norm_params, 
+                        N_std=self.N_std, new_peak=self.new_peak)
+        return np.clip(x, 0, 99.9) # 100//20==5 out-of-range
+
+    def adapt_from_dir(self, path):
+        from collections import Counter
+        
+        global_scores = [model.predict_from_file(f)['global_score'] for f in img_files_in(PATH)]
+        x = np.array(global_scores)
+        
+        x_peak, _ = Counter(x.astype(int)).most_common(1)[0]
+        # get std based on the peak value 
+        left, right = x < x_peak, x >= x_peak
+        std_left = np.concatenate([x[left], 2*x_peak-x[left]]).std() # reflection
+        std_right = np.concatenate([x[right], 2*x_peak-x[right]]).std()
+        self.norm_params = x_peak, std_left, std_right
+        return self.norm_params
 
     @torch.no_grad()
     def predict(self, image):
@@ -132,10 +167,10 @@ class InferenceModel:
 
         local_scores = np.reshape(t[1:], self.blk_size)
         global_score = t[0]
-        normed_score = normalize(global_score)
+        normed_score = self.normalize(global_score)
 
         return {"global_score": global_score,
                 "normalized_global_score": normed_score,
                 "local_scores": local_scores,
-                "normalized_local_scores": normalize(local_scores),
+                "normalized_local_scores": self.normalize(local_scores),
                 "category": self.categories[int(normed_score//20)]}
