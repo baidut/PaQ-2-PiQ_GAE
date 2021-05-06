@@ -1,6 +1,6 @@
 numpy==1.18.1
 Flask==1.1.1
-Flask-Cors==3.0.8
+Flask-Cors==3.0.9
 Pillow<=6.2.2
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.4.0+cpu
